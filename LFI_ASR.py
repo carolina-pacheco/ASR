@@ -30,6 +30,7 @@ def main(case,out_name,depth,pixel_size,wave_len,gamma,beta,niter,eps):
     z = torch.tensor(depth,dtype=torch.double)#focal depth
     T_numpy,Q_numpy = WAS_xfer(z.data.detach().numpy(), wave_len, (M1,M2), pixel_size)
     T_tensor = torch.stack([torch.from_numpy(np.real(T_numpy)),torch.from_numpy(np.imag(T_numpy))],dim=2)
+    Q_numpy = Q_from_T(T_tensor.data.detach().cpu().numpy(),z.data.detach().cpu().numpy())
     Q_tensor = torch.from_numpy(Q_numpy)
     batch_size = 1
     print('Computing initialization for '+str(N_holo)+' samples with SPR...')
@@ -50,7 +51,7 @@ def main(case,out_name,depth,pixel_size,wave_len,gamma,beta,niter,eps):
     model.B.requires_grad = False
     loss = HuberLoss(threshold = gamma)
     target = torch.zeros((batch_size,M1,M2)).double().to(device)
-    filename = 'results/ASR_'+case+'_'+out_name+'.mat'
+    filename = 'ASR_'+case+'_'+out_name
     train_loss = np.zeros((niter,1))
     for i in range(niter):
         idx_batch = random.sample([r for r in range(N_holo)],batch_size)
@@ -72,8 +73,8 @@ def main(case,out_name,depth,pixel_size,wave_len,gamma,beta,niter,eps):
             B_tensor[idx_batch,:,:,:] = complex_mul(aux_B,MaskB)
         train_loss[i] = output.cpu().detach().numpy()
         #print('Iteration #:'+str(i)+', loss: '+str(train_loss[i]))
-        if i!=0 and np.mod(i,N_holo):
-            print('Loss at current epoch:'+str(np.mean(train_loss[i-N_holo+1,i+1])))
+        if np.mod(i+1,N_holo)==0:
+            print('Running loss at current epoch:'+str(np.mean(train_loss[i-N_holo+1:i+1])))
     Results=dict()
     Results['losses'] = train_loss
     Results['T'] = model.T.data.clone().cpu().detach()#PSF
@@ -89,7 +90,7 @@ if __name__=='__main__':
     gamma = 0.1#Huber loss parameter
     beta = 1#Sparsity of background in frequency domain
     eps = 0.1#learning rate
-    niter = 20000#number of iterations
+    niter = 10000#number of iterations
     print('Running ASR for '+case+' data, with Huber parameter \gamma='+str(gamma)+' and learning rate \eps='+str(eps)+' for '+str(niter)+' iterations')
     print('Initial PSF obtained with WAS approximation (focal depth '+str(int(depth*1e6))+'um , pixel size '+str(int(pixel_size*1e9))+'nm, and wave length '+str(int(wave_len*1e9))+'nm).')
     main(case,out_name,depth,pixel_size,wave_len,gamma,beta,niter,eps)
